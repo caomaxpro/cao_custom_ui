@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_custom_ui/screens/duolingo_sentence_completion/draggable_word.dart';
-import 'package:mobile_custom_ui/screens/duolingo_sentence_completion/helper.dart';
+import 'package:mobile_custom_ui/screens/custom_reorderable_grid_view/draggable_grid.dart';
+import 'package:mobile_custom_ui/screens/custom_reorderable_grid_view/helper.dart';
 
 // Constants for app configuration
 class AppConstants {
@@ -94,7 +94,7 @@ class DragObjectState {
       display: true,
       width: width,
       height: AppConstants.blockHeight,
-      color: Colors.black.withOpacity(0.1),
+      color: Colors.transparent,
       text: "",
     );
   }
@@ -118,16 +118,15 @@ class DragSession {
       debounceTimer = Stopwatch()..start();
 }
 
-class DuolingoSentenceSortScreen extends StatefulWidget {
-  const DuolingoSentenceSortScreen({super.key});
+class CustomReorderableGridView extends StatefulWidget {
+  const CustomReorderableGridView({super.key});
 
   @override
-  State<DuolingoSentenceSortScreen> createState() =>
-      _DuolingoSentenceSortScreenState();
+  State<CustomReorderableGridView> createState() =>
+      _CustomReorderableGridViewState();
 }
 
-class _DuolingoSentenceSortScreenState
-    extends State<DuolingoSentenceSortScreen> {
+class _CustomReorderableGridViewState extends State<CustomReorderableGridView> {
   final GlobalKey _containerKey = GlobalKey();
 
   // Content data

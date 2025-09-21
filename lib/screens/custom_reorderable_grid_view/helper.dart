@@ -1,7 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:mobile_custom_ui/screens/duolingo_sentence_completion/sentence_completion_game_3.dart';
+import 'package:mobile_custom_ui/screens/custom_reorderable_grid_view/custom_reorderable_grid_view.dart';
 
 class CollisionResult {
   final DragObjectState? object;
@@ -84,9 +84,9 @@ DragObjectState? getOverlappedObjectByTouch(
   for (final obj in blocks) {
     final objRect = Rect.fromLTWH(obj.x, obj.y, obj.width, obj.height);
     if (objRect.contains(Offset(touchX, touchY))) {
-      debugPrint(
-        '[Touch Overlap] text=${obj.text}, id=${obj.id}, index=${obj.index}, x=${obj.x}, y=${obj.y}, row=${obj.row}, col=${obj.col}',
-      );
+      // debugPrint(
+      //   '[Touch Overlap] text=${obj.text}, id=${obj.id}, index=${obj.index}, x=${obj.x}, y=${obj.y}, row=${obj.row}, col=${obj.col}',
+      // );
       return obj;
     }
   }
@@ -121,9 +121,9 @@ DragObjectState? getOverlappedObjectByPercentage(
       final percent = overlapArea / (draggedRect.width * draggedRect.height);
 
       if (percent >= 0.6) {
-        debugPrint(
-          '[Va chạm] text=${obj.text}, id=${obj.id}, index=${obj.index}, percent=${(percent * 100).toStringAsFixed(2)}%',
-        );
+        // debugPrint(
+        //   '[Va chạm] text=${obj.text}, id=${obj.id}, index=${obj.index}, percent=${(percent * 100).toStringAsFixed(2)}%',
+        // );
         return obj;
       }
     }
@@ -167,9 +167,9 @@ CollisionResult? getOverlappedObjectByDirection({
             (overlapRect.width * overlapRect.height) /
             (objLeftRect.width * objLeftRect.height);
         if (percent > 0.5) {
-          debugPrint(
-            '[Direction Overlap LEFT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
-          );
+          // debugPrint(
+          //   '[Direction Overlap LEFT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
+          // );
           return CollisionResult(
             object: obj,
             overlapRect: draggedLeftRect,
@@ -184,9 +184,9 @@ CollisionResult? getOverlappedObjectByDirection({
             (overlapRect.width * overlapRect.height) /
             (objRightRect.width * objRightRect.height);
         if (percent > 0.5) {
-          debugPrint(
-            '[Direction Overlap RIGHT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
-          );
+          // debugPrint(
+          //   '[Direction Overlap RIGHT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
+          // );
           return CollisionResult(
             object: obj,
             overlapRect: draggedRightRect,
@@ -203,9 +203,9 @@ CollisionResult? getOverlappedObjectByDirection({
             (overlapRect.width * overlapRect.height) /
             (objLeftRect.width * objLeftRect.height);
         if (percent > 0.5) {
-          debugPrint(
-            '[Direction Overlap LEFT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
-          );
+          // debugPrint(
+          //   '[Direction Overlap LEFT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
+          // );
           return CollisionResult(
             object: obj,
             overlapRect: draggedLeftRect,
@@ -222,9 +222,9 @@ CollisionResult? getOverlappedObjectByDirection({
             (overlapRect.width * overlapRect.height) /
             (objRightRect.width * objRightRect.height);
         if (percent > 0.5) {
-          debugPrint(
-            '[Direction Overlap RIGHT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
-          );
+          // debugPrint(
+          //   '[Direction Overlap RIGHT] text=${obj.text}, percent=${(percent * 100).toStringAsFixed(2)}%',
+          // );
           return CollisionResult(
             object: obj,
             overlapRect: draggedRightRect,
