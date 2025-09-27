@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class SlidingTextBox extends StatefulWidget {
+class BouncingTextBox extends StatefulWidget {
   final double width;
   final double height;
   final Color backgroundColor;
@@ -11,7 +11,7 @@ class SlidingTextBox extends StatefulWidget {
   final Color innerBoxColor;
   final Duration duration;
 
-  const SlidingTextBox({
+  const BouncingTextBox({
     super.key,
     this.width = 300,
     this.height = 100,
@@ -25,10 +25,10 @@ class SlidingTextBox extends StatefulWidget {
   });
 
   @override
-  State<SlidingTextBox> createState() => _SlidingTextBoxState();
+  State<BouncingTextBox> createState() => _SlidingTextBoxState();
 }
 
-class _SlidingTextBoxState extends State<SlidingTextBox>
+class _SlidingTextBoxState extends State<BouncingTextBox>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   final GlobalKey _textKey = GlobalKey();

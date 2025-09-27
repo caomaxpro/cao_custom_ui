@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_custom_ui/screens/circular_carousel/circular_carousel_screen.dart';
 import 'package:mobile_custom_ui/screens/custom_reorderable_grid_view/custom_reorderable_grid_view.dart';
 import 'package:mobile_custom_ui/screens/drag_n_drop_object/basic_dragging.dart';
 import 'package:mobile_custom_ui/screens/duolingo_sentence_completion/reorderable_words.dart';
 import 'package:mobile_custom_ui/screens/duolingo_sentence_completion/sentence_completion_game_3.dart';
 import 'package:mobile_custom_ui/screens/library/library_screen.dart';
+import 'package:mobile_custom_ui/screens/bouncing_text_box/bouncing_text_box_screen.dart';
+import 'package:mobile_custom_ui/screens/morphing_effect/morphing_effect_screen.dart';
+import 'package:mobile_custom_ui/screens/pizza_topping_picker/pizza_topping_picker_screen.dart';
 import 'package:mobile_custom_ui/screens/sliding_text_box/sliding_text_box_screen.dart';
 import 'screens/ball_bouncing/ball_bouncing.dart';
 
@@ -21,7 +25,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: SlidingTextBoxScreen(), // Render the bouncing balls screen
+      home: MorphingEffectScreen(), // Render the bouncing balls screen
     );
   }
 }
