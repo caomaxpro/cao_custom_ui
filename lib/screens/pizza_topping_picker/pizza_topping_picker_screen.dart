@@ -1,27 +1,74 @@
 import 'dart:math';
-import 'dart:ui';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_custom_ui/screens/circular_carousel/circular_carousel.dart';
 
+// ================== Data Model ==================
+
 class ToppingState {
-  double x;
-  double y;
-  double targetX;
-  double targetY;
-  double r;
-  String name;
-  Color color;
+  final double startX;
+  final double startY;
+  final double targetX;
+  final double targetY;
+  final double r;
+  final String name;
+  final Color color;
+
+  // Pre-computed path data
+  final Path path;
+  final double pathLength;
 
   ToppingState({
-    required this.x,
-    required this.y,
-    required this.r,
+    required this.startX,
+    required this.startY,
     required this.targetX,
     required this.targetY,
+    required this.r,
     required this.name,
     required this.color,
-  });
+  }) : path = _buildPath(startX, startY, targetX, targetY),
+       pathLength = _buildPath(
+         startX,
+         startY,
+         targetX,
+         targetY,
+       ).computeMetrics().first.length;
+
+  static Path _buildPath(double sx, double sy, double tx, double ty) {
+    final path = Path()..moveTo(sx, sy);
+    final dx = tx - sx;
+    final dy = ty - sy;
+    final len = sqrt(dx * dx + dy * dy);
+
+    if (len < 0.001) {
+      path.lineTo(tx, ty);
+      return path;
+    }
+
+    final nx = -dy / len;
+    final ny = dx / len;
+    const curve = 0.25;
+
+    path.quadraticBezierTo(
+      (sx + tx) / 2 + nx * len * curve,
+      (sy + ty) / 2 + ny * len * curve,
+      tx,
+      ty,
+    );
+    return path;
+  }
 }
+
+/// Một batch topping cùng thời điểm thêm vào
+class _ToppingBatch {
+  final List<ToppingState> toppings;
+  final double startTime; // thời điểm bắt đầu (seconds)
+
+  const _ToppingBatch({required this.toppings, required this.startTime});
+}
+
+// ================== Main Screen ==================
 
 class PizzaToppingPickerScreen extends StatefulWidget {
   const PizzaToppingPickerScreen({super.key});
@@ -31,17 +78,36 @@ class PizzaToppingPickerScreen extends StatefulWidget {
       _PizzaToppingPickerScreenState();
 }
 
-class _PizzaToppingPickerScreenState extends State<PizzaToppingPickerScreen> {
-  double size = 0;
-  final double maxRadius = 0.95 * 230 / 2;
-  final double minRadius = 10.0;
-  final double gap = 12.0;
-  late final List<double> radii;
-  late final List<Offset> centers;
+class _PizzaToppingPickerScreenState extends State<PizzaToppingPickerScreen>
+    with SingleTickerProviderStateMixin {
+  static const double _maxRadius = 0.95 * 230 / 2;
+  static const double _minRadius = 10.0;
+  static const double _gap = 12.0;
+  static const double _toppingRadius = 15.0;
+  static const int _toppingsPerClick = 12;
+  static const Duration _animDuration = Duration(milliseconds: 1500);
 
-  List<ToppingState> toppings = [];
+  static const double _deltaMin = 40 * pi / 180;
+  static const double _deltaMax = 45 * pi / 180;
 
-  final List<ItemState> toppingOptions = [
+  late final List<double> _radii;
+  late final Offset _center;
+
+  late final List<double> _largeRadii;
+  late final List<double> _mediumRadii;
+  late final List<double> _smallRadii;
+
+  final List<ToppingState> _allToppings = [];
+  final List<_ToppingBatch> _batches = [];
+  final Random _random = Random();
+
+  int _mixingMode = 0;
+
+  // 1 AnimationController duy nhất cho tất cả
+  late final AnimationController _controller;
+  final Stopwatch _stopwatch = Stopwatch();
+
+  static final List<ItemState> _toppingOptions = [
     ItemState(name: "Pepperoni", color: Colors.red),
     ItemState(name: "Mushroom", color: Colors.brown),
     ItemState(name: "Olive", color: Colors.black),
@@ -54,377 +120,281 @@ class _PizzaToppingPickerScreenState extends State<PizzaToppingPickerScreen> {
     ItemState(name: "Cheese", color: Colors.orangeAccent),
   ];
 
-  bool reversed = true;
-  int mixingMode = 1;
+  static const _mixingOrders = [
+    [0, 1, 2],
+    [2, 1, 0],
+    [1, 2, 0],
+  ];
+
+  ui.Image? _pizzaImage;
 
   @override
   void initState() {
     super.initState();
+    _stopwatch.start();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+    _loadPizzaImage();
+  }
+
+  Future<void> _loadPizzaImage() async {
+    final data = await rootBundle.load('assets/images/base.png');
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (mounted) {
+      setState(() => _pizzaImage = frame.image);
+    }
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Use screenWidth here for initialization
-  }
-
-  List<ToppingState> generateRandomToppings({
-    required int count,
-    required List<double> radii,
-    required List<Offset> centers,
-    Color color = Colors.red,
-    double toppingRadius = 15,
-  }) {
-    final random = Random();
-    List<ToppingState> result = [];
-
-    // Chia radii thành 2 nửa
-    int total = radii.length;
-    int oneThird = (total / 3).round();
-
-    List<double> largeRadii = radii.sublist(0, oneThird);
-    List<double> mediumRadii = radii.sublist(oneThird, 2 * oneThird);
-    List<double> smallRadii = radii.sublist(2 * oneThird);
-
-    final Offset center = centers[0];
-    double angle = 0;
-
-    if (toppings.isEmpty) {
-      angle = (random.nextDouble() * 2 * pi);
-    } else {
-      final fCoor = toppings[toppings.length - 2];
-      final sCoor = toppings.last;
-
-      double fAngle = atan2(
-        fCoor.targetY - center.dy,
-        fCoor.targetX - center.dx,
-      );
-      double sAngle = atan2(
-        sCoor.targetY - center.dy,
-        sCoor.targetX - center.dx,
-      );
-
-      angle = (fAngle + sAngle) / 2;
-    }
-
-    double deltaMin = 40 * pi / 180;
-    double deltaMax = 45 * pi / 180;
-
-    for (int i = 0; i < count; i++) {
-      // Xen kẽ bán kính lớn và nhỏ
-      double r;
-      if (mixingMode == 1) {
-        // large, medium, small
-        if (i % 3 == 0 && largeRadii.isNotEmpty) {
-          r = largeRadii[random.nextInt(largeRadii.length)];
-        } else if (i % 3 == 1 && mediumRadii.isNotEmpty) {
-          r = mediumRadii[random.nextInt(mediumRadii.length)];
-        } else if (i % 3 == 2 && smallRadii.isNotEmpty) {
-          r = smallRadii[random.nextInt(smallRadii.length)];
-        } else {
-          r = radii[random.nextInt(radii.length)];
-        }
-      } else if (mixingMode == 2) {
-        // small, medium, large
-        if (i % 3 == 0 && smallRadii.isNotEmpty) {
-          r = smallRadii[random.nextInt(smallRadii.length)];
-        } else if (i % 3 == 1 && mediumRadii.isNotEmpty) {
-          r = mediumRadii[random.nextInt(mediumRadii.length)];
-        } else if (i % 3 == 2 && largeRadii.isNotEmpty) {
-          r = largeRadii[random.nextInt(largeRadii.length)];
-        } else {
-          r = radii[random.nextInt(radii.length)];
-        }
-      } else {
-        // mediu, small, large
-        if (i % 3 == 0 && smallRadii.isNotEmpty) {
-          r = mediumRadii[random.nextInt(smallRadii.length)];
-        } else if (i % 3 == 1 && mediumRadii.isNotEmpty) {
-          r = smallRadii[random.nextInt(mediumRadii.length)];
-        } else if (i % 3 == 2 && largeRadii.isNotEmpty) {
-          r = largeRadii[random.nextInt(largeRadii.length)];
-        } else {
-          r = radii[random.nextInt(radii.length)];
-        }
-      }
-
-      double targetX = center.dx + r * cos(angle);
-      double targetY = center.dy + r * sin(angle);
-
-      result.add(
-        ToppingState(
-          x: center.dx,
-          y: center.dy,
-          targetX: targetX,
-          targetY: targetY,
-          r: toppingRadius,
-          name: 'Topping $i',
-          color: color,
-        ),
-      );
-
-      double delta = deltaMin + random.nextDouble() * (deltaMax - deltaMin);
-      angle += delta;
-      if (angle > 2 * pi) angle -= 2 * pi;
-    }
-
-    return result;
+  void dispose() {
+    _controller.dispose();
+    _stopwatch.stop();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (size == 0) {
-      size = MediaQuery.of(context).size.width;
-      // You may want to use setState to trigger a rebuild
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => setState(() {
-          int numCircles = ((maxRadius - minRadius) ~/ gap) + 1;
-          radii = List.generate(numCircles, (i) => maxRadius - i * gap);
-          centers = List.filled(numCircles, Offset(size / 2, size / 2));
-        }),
-      );
-      return const SizedBox(); // Or a loading indicator
-    }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Pizza Topping Picker')),
-      body: Align(
-        // alignment: Alignment.topCenter,
-        child: SizedBox(
-          width: MediaQuery.of(context).size.width,
-          height: MediaQuery.of(context).size.height,
-          child: Stack(
-            alignment: Alignment.topCenter,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          _initRadii(constraints.maxWidth);
+          final pizzaRadius = _radii.first;
+          return Stack(
             children: [
-              CustomPaint(
-                painter: _RandomCirclesPainter(radii: radii, centers: centers),
-                child: Container(),
-              ),
-              // Render các điểm test
-              ...toppings.asMap().entries.map(
-                (entry) => Topping(
-                  key: ValueKey(
-                    entry.key,
-                  ), // Đảm bảo mỗi topping có key duy nhất
-                  x: entry.value.x,
-                  y: entry.value.y,
-                  r: entry.value.r,
-                  color: entry.value.color,
-                  targetX: entry.value.targetX,
-                  targetY: entry.value.targetY,
+              // Dùng AnimatedBuilder để repaint mỗi frame khi controller chạy
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: constraints.maxWidth, // vùng vuông chứa pizza
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) {
+                    return CustomPaint(
+                      painter: _PizzaAndToppingsPainter(
+                        radii: _radii,
+                        center: _center,
+                        batches: _batches,
+                        currentTime: _stopwatch.elapsedMilliseconds / 1000.0,
+                        animDurationSec: _animDuration.inMilliseconds / 1000.0,
+                        pizzaImage: _pizzaImage,
+                      ),
+                    );
+                  },
                 ),
               ),
+
+              // Carousel
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
                 child: CircularCarousel(
-                  width: MediaQuery.of(context).size.width,
+                  width: constraints.maxWidth,
                   height: 250,
                   radius: 350,
-                  itemList: toppingOptions,
-                  center: Offset(
-                    MediaQuery.of(context).size.width / 2,
-                    250 / 2 - 330,
-                  ),
-                  onPressed: (item) {
-                    final newToppings = generateRandomToppings(
-                      count: 12,
-                      radii: radii,
-                      centers: centers,
-                      color: item.color,
-                    );
-                    setState(() {
-                      toppings.addAll(newToppings);
-                      mixingMode += 1;
-
-                      if (mixingMode > 3) {
-                        reversed = !reversed;
-                        mixingMode = 1;
-                      }
-                    });
-
-                    // Sau một frame, cập nhật vị trí về target để trigger animation
-                    Future.delayed(Duration(milliseconds: 100), () {
-                      setState(() {
-                        for (
-                          int i = toppings.length - newToppings.length;
-                          i < toppings.length;
-                          i++
-                        ) {
-                          toppings[i].x = toppings[i].targetX;
-                          toppings[i].y = toppings[i].targetY;
-                        }
-                      });
-                    });
-                  },
+                  itemList: _toppingOptions,
+                  center: Offset(constraints.maxWidth / 2, 250 / 2 - 330),
+                  onPressed: _onToppingSelected,
                 ),
               ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
+
+  // ---------- Init ----------
+
+  bool _initialized = false;
+
+  void _initRadii(double screenWidth) {
+    if (_initialized) return;
+    _initialized = true;
+
+    final int numCircles = ((_maxRadius - _minRadius) ~/ _gap) + 1;
+    _radii = List.generate(numCircles, (i) => _maxRadius - i * _gap);
+    _center = Offset(screenWidth / 2, screenWidth / 2);
+
+    final int oneThird = (numCircles / 3).round();
+    _largeRadii = _radii.sublist(0, oneThird);
+    _mediumRadii = _radii.sublist(oneThird, 2 * oneThird);
+    _smallRadii = _radii.sublist(2 * oneThird);
+  }
+
+  // ---------- Logic ----------
+
+  void _onToppingSelected(ItemState item) {
+    final newToppings = _generateToppings(
+      count: _toppingsPerClick,
+      color: item.color,
+    );
+
+    _allToppings.addAll(newToppings);
+    _batches.add(
+      _ToppingBatch(
+        toppings: newToppings,
+        startTime: _stopwatch.elapsedMilliseconds / 1000.0,
+      ),
+    );
+
+    // Resume controller nếu đang dừng
+    if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
+
+    // Tự dừng sau khi animation batch này xong
+    _scheduleStop();
+
+    setState(() {
+      _mixingMode = (_mixingMode + 1) % 3;
+    });
+  }
+
+  void _scheduleStop() {
+    Future.delayed(_animDuration + const Duration(milliseconds: 50), () {
+      if (!mounted) return;
+
+      final now = _stopwatch.elapsedMilliseconds / 1000.0;
+      final animSec = _animDuration.inMilliseconds / 1000.0;
+      final allDone = _batches.every((b) => (now - b.startTime) >= animSec);
+
+      if (allDone && _controller.isAnimating) {
+        // Vẽ 1 frame cuối ở vị trí đích rồi dừng
+        _controller.stop();
+        // Force 1 repaint cuối
+        setState(() {});
+      }
+    });
+  }
+
+  List<ToppingState> _generateToppings({
+    required int count,
+    required Color color,
+  }) {
+    final List<ToppingState> result = [];
+
+    // Random hóa góc bắt đầu mỗi lần nhấn
+    double angle = _random.nextDouble() * 2 * pi;
+
+    final order = _mixingOrders[_mixingMode];
+    final groups = [_largeRadii, _mediumRadii, _smallRadii];
+
+    // Chia đều góc cho các topping
+    final double angleStep = 2 * pi / count;
+
+    for (int i = 0; i < count; i++) {
+      final groupIndex = order[i % 3];
+      final group = groups[groupIndex];
+      final r = group.isNotEmpty
+          ? group[_random.nextInt(group.length)]
+          : _radii[_random.nextInt(_radii.length)];
+
+      result.add(
+        ToppingState(
+          startX: _center.dx,
+          startY: _center.dy,
+          targetX: _center.dx + r * cos(angle),
+          targetY: _center.dy + r * sin(angle),
+          r: _toppingRadius,
+          name: 'Topping $i',
+          color: color,
+        ),
+      );
+
+      // Tỏa đều quanh pizza
+      angle += angleStep;
+    }
+
+    return result;
+  }
 }
 
-class _RandomCirclesPainter extends CustomPainter {
+// ================== Combined Painter ==================
+
+class _PizzaAndToppingsPainter extends CustomPainter {
   final List<double> radii;
-  final List<Offset> centers;
-  _RandomCirclesPainter({required this.radii, required this.centers});
+  final Offset center;
+  final List<_ToppingBatch> batches;
+  final double currentTime;
+  final double animDurationSec;
+  final ui.Image? pizzaImage;
+
+  const _PizzaAndToppingsPainter({
+    required this.radii,
+    required this.center,
+    required this.batches,
+    required this.currentTime,
+    required this.animDurationSec,
+    this.pizzaImage,
+  });
+
+  // Easing: easeOutCubic
+  static double _easeOutCubic(double t) {
+    final t1 = 1 - t;
+    return 1 - t1 * t1 * t1;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()
+    // --- draw pizza image ---
+    if (pizzaImage != null) {
+      // Tăng bán kính ảnh pizza lớn hơn vòng tròn lớn nhất 12px
+      final pizzaRadius = radii.first + 30;
+      final dstRect = Rect.fromCircle(center: center, radius: pizzaRadius);
+      final srcRect = Rect.fromLTWH(
+        0,
+        0,
+        pizzaImage!.width.toDouble(),
+        pizzaImage!.height.toDouble(),
+      );
+      canvas.save();
+      canvas.clipPath(Path()..addOval(dstRect));
+      canvas.drawImageRect(pizzaImage!, srcRect, dstRect, Paint());
+      canvas.restore();
+    }
+
+    // --- draw pizza ---
+    final circlePaint = Paint()
       ..color = Colors.black
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
-    for (int i = 0; i < radii.length; i++) {
-      canvas.drawCircle(centers[i], radii[i], paint);
+    for (final r in radii) {
+      canvas.drawCircle(center, r, circlePaint);
+    }
+
+    // --- draw toppings ---
+    final borderPaint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    for (final batch in batches) {
+      final elapsed = currentTime - batch.startTime;
+      final rawT = (elapsed / animDurationSec).clamp(0.0, 1.0);
+      final t = _easeOutCubic(rawT);
+
+      final fillPaint = Paint()..style = PaintingStyle.fill;
+
+      for (final topping in batch.toppings) {
+        // Lấy vị trí trên path theo t
+        final metric = topping.path.computeMetrics().first;
+        final pos = metric.getTangentForOffset(topping.pathLength * t);
+        final offset = pos?.position ?? Offset(topping.startX, topping.startY);
+
+        fillPaint.color = topping.color;
+        canvas.drawCircle(offset, topping.r, fillPaint);
+        canvas.drawCircle(offset, topping.r, borderPaint);
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class Topping extends StatefulWidget {
-  final double x;
-  final double y;
-  final double r;
-  final Color color;
-  final double targetX;
-  final double targetY;
-
-  const Topping({
-    super.key,
-    required this.x,
-    required this.y,
-    required this.r,
-    required this.color,
-    required this.targetX,
-    required this.targetY,
-  });
-
-  @override
-  State<Topping> createState() => _ToppingState();
-}
-
-class _ToppingState extends State<Topping> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-  late Path _path;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 10000),
-    );
-
-    _animation = Tween(begin: 0.0, end: 1.0).animate(_controller)
-      ..addListener(() {
-        setState(() {});
-      });
-
-    // Tạo đường cong từ điểm xuất phát đến điểm đích
-    _path = _createPath();
-
-    // Bắt đầu animation ngay khi widget được tạo
-    _controller.forward();
-  }
-
-  Path _createPath() {
-    Path path = Path();
-
-    // Điểm xuất phát
-    path.moveTo(widget.x, widget.y);
-
-    // Trung điểm AB
-    final double mx = (widget.x + widget.targetX) / 2;
-    final double my = (widget.y + widget.targetY) / 2;
-
-    // Vector AB
-    final dx = widget.targetX - widget.x;
-    final dy = widget.targetY - widget.y;
-
-    // Vector pháp tuyến (vuông góc AB)
-    final length = sqrt(dx * dx + dy * dy);
-    final nx = -dy / length;
-    final ny = dx / length;
-
-    // Đẩy control point ra ngoài theo pháp tuyến (độ cong = 0.25 * chiều dài AB, bạn có thể chỉnh)
-    const double curve = 0.25;
-    final double controlX = mx + nx * length * curve;
-    final double controlY = my + ny * length * curve;
-
-    // Tạo đường cong bezier đến điểm đích
-    path.quadraticBezierTo(controlX, controlY, widget.targetX, widget.targetY);
-
-    return path;
-  }
-
-  Offset _calculatePosition(double value) {
-    PathMetrics pathMetrics = _path.computeMetrics();
-    PathMetric pathMetric = pathMetrics.elementAt(0);
-    value = pathMetric.length * value;
-    Tangent? pos = pathMetric.getTangentForOffset(value);
-    return pos?.position ?? Offset(widget.x, widget.y);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Tính vị trí hiện tại dựa trên đường cong
-    Offset position = _calculatePosition(_animation.value);
-
-    return Stack(
-      children: [
-        // Vẽ đường cong để debug
-        // CustomPaint(
-        //   painter: PathPainter(_path),
-        //   size: Size(
-        //     MediaQuery.of(context).size.width,
-        //     MediaQuery.of(context).size.height,
-        //   ),
-        // ),
-
-        // Topping di chuyển theo đường cong
-        Positioned(
-          left: position.dx - widget.r,
-          top: position.dy - widget.r,
-          width: widget.r * 2,
-          height: widget.r * 2,
-          child: Container(
-            decoration: BoxDecoration(
-              color: widget.color,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black, width: 2),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// Thêm lớp này vào cuối file
-class PathPainter extends CustomPainter {
-  final Path path;
-
-  PathPainter(this.path);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()
-      ..color = Colors.red.withOpacity(0.5)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PizzaAndToppingsPainter old) => true;
 }

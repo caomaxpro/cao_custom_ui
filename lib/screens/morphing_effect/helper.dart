@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:path_parsing/path_parsing.dart';
+import 'dart:math' as math;
 
 import 'package:mobile_custom_ui/screens/morphing_effect/morphing_object.dart';
 
@@ -125,4 +126,58 @@ class _CubicPathProxy extends PathProxy {
     // Chuyển conic thành cubic (xấp xỉ)
     quadraticBezierTo(x1, y1, x2, y2);
   }
+}
+
+/// Chuẩn hóa: mọi shape có cùng số điểm (maxPoints).
+List<List<CubicControlPoint>> normalizeShapes(
+  List<List<CubicControlPoint>> shapes,
+) {
+  if (shapes.isEmpty) return shapes;
+
+  final int maxPoints = shapes
+      .map((s) => s.length)
+      .fold<int>(0, (p, c) => math.max(p, c));
+
+  if (maxPoints <= 1) return shapes;
+
+  return shapes
+      .map((s) => _resampleShapeClosed(s, maxPoints))
+      .toList(growable: false);
+}
+
+List<CubicControlPoint> _resampleShapeClosed(
+  List<CubicControlPoint> shape,
+  int targetCount,
+) {
+  if (shape.isEmpty) return shape;
+  if (shape.length == 1) {
+    // Nếu chỉ có 1 điểm, nhân bản cho đủ
+    return List<CubicControlPoint>.filled(targetCount, shape.first);
+  }
+
+  final List<CubicControlPoint> out = [];
+
+  for (int i = 0; i < targetCount; i++) {
+    // t chạy quanh vòng, t trong [0, length)
+    final double t = i * shape.length / targetCount;
+    final int i0 = t.floor() % shape.length;
+    final int i1 = (i0 + 1) % shape.length;
+    final double localT = t - t.floor();
+
+    out.add(_lerpCubicPoint(shape[i0], shape[i1], localT));
+  }
+
+  return out;
+}
+
+CubicControlPoint _lerpCubicPoint(
+  CubicControlPoint a,
+  CubicControlPoint b,
+  double t,
+) {
+  return CubicControlPoint(
+    anchor: Offset.lerp(a.anchor, b.anchor, t)!,
+    control1: Offset.lerp(a.control1, b.control1, t)!,
+    control2: Offset.lerp(a.control2, b.control2, t)!,
+  );
 }

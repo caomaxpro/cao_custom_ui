@@ -1,55 +1,35 @@
 import 'dart:math';
-
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
-// this is the item's model
-class ItemState {
-  String name;
-  double x;
-  double y;
-  Color color;
-  double radius;
-  Image? itemImage;
+// ================== Data Model (Immutable) ==================
 
-  ItemState({
-    this.name = "",
-    this.x = 0,
-    this.y = 0,
-    this.color = Colors.white,
-    this.radius = 0,
-    this.itemImage,
-  });
+class ItemState {
+  final String name;
+  final Color color;
+
+  const ItemState({this.name = "", this.color = Colors.white});
 }
 
+// ================== Widget ==================
+
 class CircularCarousel extends StatefulWidget {
-  // height and width of the container
-  // main circle
   final double height;
   final double width;
-
-  // size of the circle
   final double radius;
-
-  // the circle's position
   final Offset center;
-
-  // list of items should be rendered in the container
   final List<ItemState> itemList;
-
-  // items
   final void Function(ItemState item)? onPressed;
+  final double minItemRadius;
+  final double maxItemRadius;
 
-  double minItemRadius;
-  double maxItemRadius;
-
-  CircularCarousel({
+  const CircularCarousel({
     super.key,
     this.height = 0,
     this.width = 0,
     this.itemList = const [],
     this.radius = 60,
     this.center = const Offset(0, 0),
-
     this.onPressed,
     this.minItemRadius = 60,
     this.maxItemRadius = 80,
@@ -59,262 +39,195 @@ class CircularCarousel extends StatefulWidget {
   State<CircularCarousel> createState() => _CircularCarouselState();
 }
 
-class _CircularCarouselState extends State<CircularCarousel> {
-  Offset center = Offset.zero;
-  double startAngle = 0;
-  List<ItemState> items = [];
-  bool isLocked = false;
-  double lockedAngle = 0;
+class _CircularCarouselState extends State<CircularCarousel>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late double _currentAngle; // góc hiện tại (radian)
+  double _targetAngle = 0; // góc đích sau snap
+  int _selectedIndex = 0;
 
-  void _renderItems() {
-    // calculate
-  }
-
-  void _drawCircle() {}
+  int get _itemCount => widget.itemList.length;
+  double get _angleStep => 2 * pi / _itemCount;
+  double get _radius => widget.radius > 0 ? widget.radius : 100;
 
   @override
   void initState() {
     super.initState();
+    _currentAngle = 0;
+    _targetAngle = 0;
 
-    center = widget.center;
-
-    // testing item
-    items = widget.itemList;
-
-    final double angleStep = 2 * pi / items.length;
-
-    for (int i = 0; i < items.length; i++) {
-      // Bắt đầu từ 90 độ (π/2 radian), tức là điểm dưới cùng
-      double angle = pi / 2 + i * angleStep;
-      double x = center.dx + widget.radius * cos(angle);
-      double y = center.dy + widget.radius * sin(angle);
-
-      items[i].x = x;
-      items[i].y = y;
-      items[i].color = Colors.primaries[i % Colors.primaries.length];
-      items[i].radius = i == 0 ? widget.maxItemRadius : widget.minItemRadius;
-
-      // items.add(
-      //   ItemState(
-      //     x: x,
-      //     y: y,
-      //     color: Colors.primaries[i % Colors.primaries.length],
-      //     radius: i == 0 ? 80 : 60,
-      //   ),
-      // );
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {});
-    });
+    _animController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 400),
+        )..addListener(() {
+          setState(() {
+            // Lerp từ current → target
+            _currentAngle = lerpDouble(
+              _currentAngle,
+              _targetAngle,
+              _animController.value,
+            )!;
+          });
+        });
   }
 
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    debugPrint("[On Drag]: True");
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  // ---------- Gesture ----------
+
+  double _dragStartAngle = 0;
+
+  void _onDragStart(DragStartDetails details) {
+    _animController.stop();
+    _dragStartAngle = _currentAngle;
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
     setState(() {
-      // Điều chỉnh hệ số 0.01 cho phù hợp độ nhạy
-      startAngle += details.delta.dx * 0.01;
-
-      debugPrint("[Start Angle]: $startAngle");
+      _currentAngle -= details.delta.dx * 0.009;
     });
   }
 
-  // minimize item.radius
-  void _updateItem() {}
+  void _onDragEnd(DragEndDetails details) {
+    _snapToNearest();
+  }
 
-  void _snapToNearest90() {
-    final int itemCount = items.length;
+  void _snapToNearest() {
+    // Tìm item gần 90° (pi/2) nhất
     double minDiff = double.infinity;
     int nearestIndex = 0;
-    double nearestAngle = 0;
 
-    // Tìm item có góc gần nhất với 90 độ (pi/2)
-    for (int i = 0; i < itemCount; i++) {
-      double angle = (startAngle + pi / 2 + 2 * pi * i / itemCount) % (2 * pi);
-      double diff = (angle - pi / 2).abs();
+    for (int i = 0; i < _itemCount; i++) {
+      final angle = (_currentAngle + pi / 2 + _angleStep * i) % (2 * pi);
+      var diff = (angle - pi / 2).abs();
       if (diff > pi) diff = 2 * pi - diff;
       if (diff < minDiff) {
         minDiff = diff;
         nearestIndex = i;
-        nearestAngle = angle;
       }
     }
 
-    setState(() {
-      debugPrint("update processing...");
-      // Tính delta để item này về đúng 90 độ
-      double delta = (pi / 2 - nearestAngle);
+    // Tính delta cần xoay
+    final nearestAngle =
+        (_currentAngle + pi / 2 + _angleStep * nearestIndex) % (2 * pi);
+    final delta = pi / 2 - nearestAngle;
 
-      // reset item back to its minItemRadius
-      for (int i = 0; i < itemCount; i++) {
-        items[i].radius = widget.minItemRadius;
-      }
+    _targetAngle = _currentAngle + delta;
+    _selectedIndex = nearestIndex;
 
-      items[nearestIndex].radius = widget.maxItemRadius;
-
-      // for (int i = 0; i < itemCount; i++) {
-      //   debugPrint(
-      //     "Item $i: x=${items[i].x}, y=${items[i].y}, radius=${items[i].radius}",
-      //   );
-      // }
-
-      startAngle += delta;
-    });
+    // Animate tới target
+    _dragStartAngle = _currentAngle;
+    _animController.forward(from: 0);
   }
+
+  // ---------- Position helpers ----------
+
+  Offset _itemPosition(int index) {
+    final angle = _currentAngle + pi / 2 + _angleStep * index;
+    return Offset(
+      widget.center.dx + _radius * cos(angle),
+      widget.center.dy + _radius * sin(angle),
+    );
+  }
+
+  double _itemRadius(int index) {
+    // Item được chọn lớn hơn
+    return index == _selectedIndex
+        ? widget.maxItemRadius
+        : widget.minItemRadius;
+  }
+
+  // ---------- Build ----------
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (TapDownDetails details) {
-        debugPrint("On Tap");
-        // stop startAngle from updating
-        setState(() {
-          isLocked = true;
-          lockedAngle = startAngle; // Khóa lại
-        });
-      },
-      onHorizontalDragUpdate: (details) {
-        if (!isLocked) {
-          setState(() {
-            startAngle -= details.delta.dx * 0.009;
-
-            for (int i = 0; i < items.length; i++) {
-              items[i].radius = 60; // reset về mặc định
-            }
-          });
-        }
-      },
-      onHorizontalDragEnd: (details) {
-        setState(() {
-          _snapToNearest90();
-        });
-      },
-      onTapUp: (TapUpDetails details) {
-        setState(() {
-          isLocked = false;
-          startAngle += 0; // Mở khóa khi nhả tay
-        });
-      },
-      onTapCancel: () {
-        setState(() {
-          isLocked = false;
-          startAngle += 0;
-        });
-      },
+      onHorizontalDragStart: _onDragStart,
+      onHorizontalDragUpdate: _onDragUpdate,
+      onHorizontalDragEnd: _onDragEnd,
       child: Container(
         height: widget.height,
         width: widget.width,
         color: Colors.transparent,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(
-            begin: 0,
-            end: isLocked ? lockedAngle : startAngle,
-          ),
-          duration: const Duration(milliseconds: 2000),
-          curve: Curves.easeOut,
-          builder: (context, animatedAngle, child) {
-            final int itemCount = items.length;
-            final double radius = widget.radius > 0 ? widget.radius : 100;
+        child: Stack(
+          children: List.generate(_itemCount, (i) {
+            final pos = _itemPosition(i);
+            final r = _itemRadius(i);
+            final item = widget.itemList[i];
 
-            // Chỉ cập nhật lại vị trí cho từng item, KHÔNG cập nhật lại radius
-            for (int i = 0; i < itemCount; i++) {
-              double angle = animatedAngle + pi / 2 + 2 * pi * i / itemCount;
-              double x = center.dx + radius * cos(angle);
-              double y = center.dy + radius * sin(angle);
-              items[i].x = x;
-              items[i].y = y;
-              // KHÔNG cập nhật lại radius ở đây!
-            }
-
-            return Stack(
-              children: [
-                // CustomPaint(
-                //   painter: CirclePainter(center: center, radius: radius),
-                // ),
-                // CustomPaint(
-                //   painter: LinePainter(
-                //     center: center,
-                //     radius: radius,
-                //     degAngle: animatedAngle * 180 / pi,
-                //   ),
-                // ),
-                ...items.map(
-                  (item) => Positioned(
-                    left: item.x - item.radius,
-                    top: item.y - item.radius,
-                    child: GestureDetector(
-                      onTap: () {
-                        if (widget.onPressed != null &&
-                            item.radius == widget.maxItemRadius) {
-                          widget.onPressed!(item);
-                        }
-                      },
-                      child: Container(
-                        width: item.radius * 2,
-                        height: item.radius * 2,
-                        decoration: BoxDecoration(
-                          color: item.color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  ),
+            return Positioned(
+              left: pos.dx - r,
+              top: pos.dy - r,
+              width: r * 2,
+              height: r * 2,
+              child: GestureDetector(
+                onTap: () {
+                  if (i == _selectedIndex) {
+                    widget.onPressed?.call(item);
+                  } else {
+                    // Snap tới item này
+                    _selectedIndex = i;
+                    final angle =
+                        (_currentAngle + pi / 2 + _angleStep * i) % (2 * pi);
+                    final delta = pi / 2 - angle;
+                    _targetAngle = _currentAngle + delta;
+                    _dragStartAngle = _currentAngle;
+                    _animController.forward(from: 0);
+                  }
+                },
+                child: _ItemCircle(
+                  color: item.color,
+                  name: item.name,
+                  isSelected: i == _selectedIndex,
                 ),
-              ],
+              ),
             );
-          },
+          }),
         ),
       ),
     );
   }
 }
 
-class CirclePainter extends CustomPainter {
-  final Offset center;
-  final double radius;
+// ================== Item Widget (const-friendly) ==================
 
-  CirclePainter({required this.center, required this.radius});
+class _ItemCircle extends StatelessWidget {
+  final Color color;
+  final String name;
+  final bool isSelected;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.blue
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawCircle(center, radius, paint);
-  }
+  const _ItemCircle({
+    required this.color,
+    required this.name,
+    required this.isSelected,
+  });
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-class LinePainter extends CustomPainter {
-  final Offset center;
-  final double radius;
-  final double degAngle; // radian, mặc định là 0 (hướng sang phải)
-
-  LinePainter({required this.center, required this.radius, this.degAngle = 0});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.red
-      ..strokeWidth = 2;
-
-    final double angle = degAngle * pi / 180;
-
-    // Tính điểm mép đường tròn theo góc
-    final Offset edge = Offset(
-      center.dx + radius * cos(angle),
-      center.dy + radius * sin(angle),
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: isSelected ? Border.all(color: Colors.white, width: 3) : null,
+        boxShadow: isSelected
+            ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 12)]
+            : null,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        name,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: isSelected ? 12 : 10,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
     );
-
-    canvas.drawLine(center, edge, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant LinePainter oldDelegate) {
-    return oldDelegate.degAngle != degAngle;
   }
 }

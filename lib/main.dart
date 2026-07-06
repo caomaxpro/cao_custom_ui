@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+// ignore: depend_on_referenced_packages
+import 'package:window_size/window_size.dart';
 import 'package:mobile_custom_ui/screens/circular_carousel/circular_carousel_screen.dart';
 import 'package:mobile_custom_ui/screens/custom_reorderable_grid_view/custom_reorderable_grid_view.dart';
 import 'package:mobile_custom_ui/screens/drag_n_drop_object/basic_dragging.dart';
@@ -11,7 +14,17 @@ import 'package:mobile_custom_ui/screens/pizza_topping_picker/pizza_topping_pick
 import 'package:mobile_custom_ui/screens/sliding_text_box/sliding_text_box_screen.dart';
 import 'screens/ball_bouncing/ball_bouncing.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Set size cho desktop (Linux, Windows, macOS)
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    setWindowTitle('Flutter Demo');
+    setWindowMinSize(const Size(476, 948));
+    setWindowMaxSize(const Size(476, 948));
+    setWindowFrame(const Rect.fromLTWH(100, 100, 1080, 2340));
+  }
+
   runApp(const MyApp());
 }
 
@@ -25,7 +38,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: MorphingEffectScreen(), // Render the bouncing balls screen
+      home: PizzaToppingPickerScreen(), // Render the bouncing balls screen
     );
   }
 }

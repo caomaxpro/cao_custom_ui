@@ -38,7 +38,7 @@ class _MorphingObjectState extends State<MorphingObject>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 60),
+      duration: const Duration(seconds: 5),
     );
     _animation = Tween<double>(begin: 0.0, end: 1.0).animate(_controller);
 
